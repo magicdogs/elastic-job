@@ -17,14 +17,16 @@
 
 package com.dangdang.ddframe.job.cloud.scheduler.mesos;
 
-import com.dangdang.ddframe.job.context.ExecutionType;
-import com.dangdang.ddframe.job.cloud.scheduler.context.JobContext;
-import com.dangdang.ddframe.job.context.TaskContext;
 import com.dangdang.ddframe.job.cloud.scheduler.fixture.CloudJobConfigurationBuilder;
 import com.dangdang.ddframe.job.cloud.scheduler.fixture.TaskNode;
+import com.dangdang.ddframe.job.cloud.scheduler.ha.FrameworkIDService;
 import com.dangdang.ddframe.job.cloud.scheduler.mesos.fixture.OfferBuilder;
 import com.dangdang.ddframe.job.cloud.scheduler.state.running.RunningService;
+import com.dangdang.ddframe.job.cloud.scheduler.statistics.StatisticManager;
+import com.dangdang.ddframe.job.context.TaskContext;
 import com.dangdang.ddframe.job.event.JobEventBus;
+import com.dangdang.ddframe.job.reg.base.CoordinatorRegistryCenter;
+import com.google.common.base.Optional;
 import com.netflix.fenzo.TaskScheduler;
 import com.netflix.fenzo.functions.Action2;
 import org.apache.mesos.Protos;
@@ -33,17 +35,17 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.Mockito;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.unitils.util.ReflectionUtils;
 
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.anyBoolean;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -52,34 +54,38 @@ import static org.mockito.Mockito.when;
 @RunWith(MockitoJUnitRunner.class)
 public final class SchedulerEngineTest {
     
-    private LeasesQueue leasesQueue = new LeasesQueue();
-    
     @Mock
     private TaskScheduler taskScheduler;
     
     @Mock
     private FacadeService facadeService;
     
+    @Mock
+    private FrameworkIDService frameworkIDService;
+    
+    @Mock
+    private StatisticManager statisticManager;
+    
     private SchedulerEngine schedulerEngine;
     
     @Before
     public void setUp() throws NoSuchFieldException {
-        schedulerEngine = new SchedulerEngine(leasesQueue, taskScheduler, facadeService, new JobEventBus());
+        schedulerEngine = new SchedulerEngine(taskScheduler, facadeService, new JobEventBus(), frameworkIDService, statisticManager);
         ReflectionUtils.setFieldValue(schedulerEngine, "facadeService", facadeService);
-        new RunningService().clear();
+        when(facadeService.load("test_job")).thenReturn(Optional.of(CloudJobConfigurationBuilder.createCloudJobConfiguration("test_job")));
+        new RunningService(Mockito.mock(CoordinatorRegistryCenter.class)).clear();
     }
     
     @Test
     public void assertRegistered() {
-        schedulerEngine.registered(null, null, null);
-        verify(facadeService).start();
+        schedulerEngine.registered(null, Protos.FrameworkID.newBuilder().setValue("1").build(), Protos.MasterInfo.getDefaultInstance());
         verify(taskScheduler).expireAllLeases();
+        verify(frameworkIDService).save("1");
     }
     
     @Test
     public void assertReregistered() {
-        schedulerEngine.reregistered(null, null);
-        verify(facadeService).start();
+        schedulerEngine.reregistered(null, Protos.MasterInfo.getDefaultInstance());
         verify(taskScheduler).expireAllLeases();
     }
     
@@ -87,10 +93,8 @@ public final class SchedulerEngineTest {
     public void assertResourceOffers() {
         SchedulerDriver schedulerDriver = mock(SchedulerDriver.class);
         List<Protos.Offer> offers = Arrays.asList(OfferBuilder.createOffer("offer_0"), OfferBuilder.createOffer("offer_1"));
-        when(facadeService.getEligibleJobContext()).thenReturn(
-                Collections.singletonList(JobContext.from(CloudJobConfigurationBuilder.createCloudJobConfiguration("failover_job"), ExecutionType.FAILOVER)));
         schedulerEngine.resourceOffers(schedulerDriver, offers);
-        assertThat(leasesQueue.drainTo().size(), is(2));
+        assertThat(LeasesQueue.getInstance().drainTo().size(), is(2));
     }
     
     @Test
@@ -134,7 +138,7 @@ public final class SchedulerEngineTest {
     
     @Test
     public void assertFinishedStatusUpdate() {
-        @SuppressWarnings("unchecked") 
+        @SuppressWarnings("unchecked")
         Action2<String, String> taskUnAssigner = mock(Action2.class);
         when(taskScheduler.getTaskUnAssigner()).thenReturn(taskUnAssigner);
         TaskNode taskNode = TaskNode.builder().build();
@@ -143,6 +147,7 @@ public final class SchedulerEngineTest {
                 .setState(Protos.TaskState.TASK_FINISHED).setSlaveId(Protos.SlaveID.newBuilder().setValue("slave-S0")).build());
         verify(facadeService).removeRunning(TaskContext.from(taskNode.getTaskNodeValue()));
         verify(taskUnAssigner).call(TaskContext.getIdForUnassignedSlave(taskNode.getTaskNodeValue()), "localhost");
+        verify(statisticManager).taskRunSuccessfully();
     }
     
     @Test
@@ -170,8 +175,8 @@ public final class SchedulerEngineTest {
                 .setState(Protos.TaskState.TASK_FAILED).setSlaveId(Protos.SlaveID.newBuilder().setValue("slave-S0")).build());
         verify(facadeService).recordFailoverTask(TaskContext.from(taskNode.getTaskNodeValue()));
         verify(facadeService).removeRunning(TaskContext.from(taskNode.getTaskNodeValue()));
-        verify(facadeService).addDaemonJobToReadyQueue("test_job");
         verify(taskUnAssigner).call(TaskContext.getIdForUnassignedSlave(taskNode.getTaskNodeValue()), "localhost");
+        verify(statisticManager).taskRunFailed();
     }
     
     @Test
@@ -185,8 +190,8 @@ public final class SchedulerEngineTest {
                 .setState(Protos.TaskState.TASK_ERROR).setSlaveId(Protos.SlaveID.newBuilder().setValue("slave-S0")).build());
         verify(facadeService).recordFailoverTask(TaskContext.from(taskNode.getTaskNodeValue()));
         verify(facadeService).removeRunning(TaskContext.from(taskNode.getTaskNodeValue()));
-        verify(facadeService).addDaemonJobToReadyQueue("test_job");
         verify(taskUnAssigner).call(TaskContext.getIdForUnassignedSlave(taskNode.getTaskNodeValue()), "localhost");
+        verify(statisticManager).taskRunFailed();
     }
     
     @Test
@@ -200,19 +205,13 @@ public final class SchedulerEngineTest {
                 .setTaskId(Protos.TaskID.newBuilder().setValue(taskNode.getTaskNodeValue())).setState(Protos.TaskState.TASK_LOST).setSlaveId(Protos.SlaveID.newBuilder().setValue("slave-S0")).build());
         verify(facadeService).recordFailoverTask(TaskContext.from(taskNode.getTaskNodeValue()));
         verify(facadeService).removeRunning(TaskContext.from(taskNode.getTaskNodeValue()));
-        verify(facadeService).addDaemonJobToReadyQueue("test_job");
         verify(taskUnAssigner).call(TaskContext.getIdForUnassignedSlave(taskNode.getTaskNodeValue()), "localhost");
+        verify(statisticManager).taskRunFailed();
     }
     
     @Test
     public void assertFrameworkMessage() {
         schedulerEngine.frameworkMessage(null, null, Protos.SlaveID.newBuilder().setValue("slave-S0").build(), new byte[1]);
-    }
-    
-    @Test
-    public void assertDisconnected() {
-        schedulerEngine.disconnected(null);
-        verify(facadeService).stop();
     }
     
     @Test

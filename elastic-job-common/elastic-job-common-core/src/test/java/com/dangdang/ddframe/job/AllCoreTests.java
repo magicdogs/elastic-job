@@ -19,10 +19,12 @@ package com.dangdang.ddframe.job;
 
 import com.dangdang.ddframe.job.api.AllApiTests;
 import com.dangdang.ddframe.job.config.AllConfigTests;
+import com.dangdang.ddframe.job.context.AllContextTests;
 import com.dangdang.ddframe.job.event.AllEventTests;
 import com.dangdang.ddframe.job.exception.AllExceptionTests;
 import com.dangdang.ddframe.job.executor.AllExecutorTests;
 import com.dangdang.ddframe.job.reg.AllRegTests;
+import com.dangdang.ddframe.job.statistics.AllStatisticsTests;
 import com.dangdang.ddframe.job.util.AllUtilTests;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -32,12 +34,14 @@ import org.junit.runners.Suite.SuiteClasses;
 
 @RunWith(Suite.class)
 @SuiteClasses({
-        AllRegTests.class, 
+        AllRegTests.class,
+        AllContextTests.class,
         AllApiTests.class, 
         AllConfigTests.class, 
         AllExecutorTests.class, 
         AllEventTests.class, 
-        AllExceptionTests.class, 
+        AllExceptionTests.class,
+        AllStatisticsTests.class,
         AllUtilTests.class
     })
 @NoArgsConstructor(access = AccessLevel.PRIVATE)

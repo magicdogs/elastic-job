@@ -63,7 +63,7 @@ public final class TaskContextTest {
     }
     
     @Test
-    public void assertMetaInfoFrom() {
+    public void assertMetaInfoFromWithMetaInfo() {
         TaskContext.MetaInfo actual = TaskContext.MetaInfo.from("test_job@-@1");
         assertThat(actual.getJobName(), is("test_job"));
         assertThat(actual.getShardingItems().get(0), is(1));
@@ -74,6 +74,20 @@ public final class TaskContextTest {
         TaskContext.MetaInfo actual = TaskContext.MetaInfo.from("test_job@-@1@-@READY@-@unassigned-slave@-@0");
         assertThat(actual.getJobName(), is("test_job"));
         assertThat(actual.getShardingItems().get(0), is(1));
+    }
+    
+    @Test
+    public void assertMetaInfoFromWithMetaInfoWithoutShardingItems() {
+        TaskContext.MetaInfo actual = TaskContext.MetaInfo.from("test_job@-@");
+        assertThat(actual.getJobName(), is("test_job"));
+        assertTrue(actual.getShardingItems().isEmpty());
+    }
+    
+    @Test
+    public void assertMetaInfoFromWithTaskIdWithoutShardingItems() {
+        TaskContext.MetaInfo actual = TaskContext.MetaInfo.from("test_job@-@@-@READY@-@unassigned-slave@-@0");
+        assertThat(actual.getJobName(), is("test_job"));
+        assertTrue(actual.getShardingItems().isEmpty());
     }
     
     @Test
@@ -90,7 +104,7 @@ public final class TaskContextTest {
     @Test
     public void assertGetExecutorId() {
         TaskContext actual = TaskContext.from(TaskNode.builder().build().getTaskNodeValue());
-        assertThat(actual.getExecutorId("app"), is("d2a57dc1d883fd21fb9951699df71cc7@-@slave-S0"));
+        assertThat(actual.getExecutorId("app"), is("app@-@slave-S0"));
     }
     
     @Test

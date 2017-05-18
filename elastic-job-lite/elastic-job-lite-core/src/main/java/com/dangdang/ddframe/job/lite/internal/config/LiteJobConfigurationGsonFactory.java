@@ -82,22 +82,25 @@ public final class LiteJobConfigurationGsonFactory {
         protected void addToCustomizedValueMap(final String jsonName, final JsonReader in, final Map<String, Object> customizedValueMap) throws IOException {
             switch (jsonName) {
                 case "monitorExecution":
-                    customizedValueMap.put("monitorExecution", in.nextBoolean());
+                    customizedValueMap.put(jsonName, in.nextBoolean());
                     break;
                 case "maxTimeDiffSeconds":
-                    customizedValueMap.put("maxTimeDiffSeconds", in.nextInt());
+                    customizedValueMap.put(jsonName, in.nextInt());
                     break;
                 case "monitorPort":
-                    customizedValueMap.put("monitorPort", in.nextInt());
+                    customizedValueMap.put(jsonName, in.nextInt());
                     break;
                 case "jobShardingStrategyClass":
-                    customizedValueMap.put("jobShardingStrategyClass", in.nextString());
+                    customizedValueMap.put(jsonName, in.nextString());
+                    break;
+                case "reconcileIntervalMinutes":
+                    customizedValueMap.put(jsonName, in.nextInt());
                     break;
                 case "disabled":
-                    customizedValueMap.put("disabled", in.nextBoolean());
+                    customizedValueMap.put(jsonName, in.nextBoolean());
                     break;
                 case "overwrite":
-                    customizedValueMap.put("overwrite", in.nextBoolean());
+                    customizedValueMap.put(jsonName, in.nextBoolean());
                     break;
                 default:
                     in.skipValue();
@@ -120,6 +123,9 @@ public final class LiteJobConfigurationGsonFactory {
             if (customizedValueMap.containsKey("jobShardingStrategyClass")) {
                 builder.jobShardingStrategyClass((String) customizedValueMap.get("jobShardingStrategyClass"));
             }
+            if (customizedValueMap.containsKey("reconcileIntervalMinutes")) {
+                builder.reconcileIntervalMinutes((int) customizedValueMap.get("reconcileIntervalMinutes"));
+            }
             if (customizedValueMap.containsKey("disabled")) {
                 builder.disabled((boolean) customizedValueMap.get("disabled"));
             }
@@ -128,13 +134,14 @@ public final class LiteJobConfigurationGsonFactory {
             }
             return builder.build();
         }
-    
+        
         @Override
         protected void writeCustomized(final JsonWriter out, final LiteJobConfiguration value) throws IOException {
             out.name("monitorExecution").value(value.isMonitorExecution());
             out.name("maxTimeDiffSeconds").value(value.getMaxTimeDiffSeconds());
             out.name("monitorPort").value(value.getMonitorPort());
             out.name("jobShardingStrategyClass").value(value.getJobShardingStrategyClass());
+            out.name("reconcileIntervalMinutes").value(value.getReconcileIntervalMinutes());
             out.name("disabled").value(value.isDisabled());
             out.name("overwrite").value(value.isOverwrite());
         }

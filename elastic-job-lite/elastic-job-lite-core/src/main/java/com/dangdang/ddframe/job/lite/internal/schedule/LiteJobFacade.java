@@ -30,28 +30,28 @@ import com.dangdang.ddframe.job.executor.ShardingContexts;
 import com.dangdang.ddframe.job.lite.api.listener.ElasticJobListener;
 import com.dangdang.ddframe.job.lite.config.LiteJobConfiguration;
 import com.dangdang.ddframe.job.lite.internal.config.ConfigurationService;
-import com.dangdang.ddframe.job.lite.internal.execution.ExecutionContextService;
-import com.dangdang.ddframe.job.lite.internal.execution.ExecutionService;
+import com.dangdang.ddframe.job.lite.internal.sharding.ExecutionContextService;
+import com.dangdang.ddframe.job.lite.internal.sharding.ExecutionService;
 import com.dangdang.ddframe.job.lite.internal.failover.FailoverService;
-import com.dangdang.ddframe.job.lite.internal.server.ServerService;
 import com.dangdang.ddframe.job.lite.internal.sharding.ShardingService;
 import com.dangdang.ddframe.job.reg.base.CoordinatorRegistryCenter;
+import com.google.common.base.Strings;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
 import java.util.List;
 
 /**
- * 为调度器提供内部服务的门面类.
+ * 为作业提供内部服务的门面类.
  * 
  * @author zhangliang
  */
-public class LiteJobFacade implements JobFacade {
+@Slf4j
+public final class LiteJobFacade implements JobFacade {
     
     private final ConfigurationService configService;
     
     private final ShardingService shardingService;
-    
-    private final ServerService serverService;
     
     private final ExecutionContextService executionContextService;
     
@@ -66,7 +66,6 @@ public class LiteJobFacade implements JobFacade {
     public LiteJobFacade(final CoordinatorRegistryCenter regCenter, final String jobName, final List<ElasticJobListener> elasticJobListeners, final JobEventBus jobEventBus) {
         configService = new ConfigurationService(regCenter, jobName);
         shardingService = new ShardingService(regCenter, jobName);
-        serverService = new ServerService(regCenter, jobName);
         executionContextService = new ExecutionContextService(regCenter, jobName);
         executionService = new ExecutionService(regCenter, jobName);
         failoverService = new FailoverService(regCenter, jobName);
@@ -86,7 +85,7 @@ public class LiteJobFacade implements JobFacade {
     
     @Override
     public void failoverIfNecessary() {
-        if (configService.load(true).isFailover() && !serverService.isJobPausedManually()) {
+        if (configService.load(true).isFailover()) {
             failoverService.failoverIfNecessary();
         }
     }
@@ -104,25 +103,27 @@ public class LiteJobFacade implements JobFacade {
         }
     }
     
+    @Override
     public ShardingContexts getShardingContexts() {
         boolean isFailover = configService.load(true).isFailover();
         if (isFailover) {
-            List<Integer> failoverShardingItems = failoverService.getLocalHostFailoverItems();
+            List<Integer> failoverShardingItems = failoverService.getLocalFailoverItems();
             if (!failoverShardingItems.isEmpty()) {
                 return executionContextService.getJobShardingContext(failoverShardingItems);
             }
         }
         shardingService.shardingIfNecessary();
-        List<Integer> shardingItems = shardingService.getLocalHostShardingItems();
+        List<Integer> shardingItems = shardingService.getLocalShardingItems();
         if (isFailover) {
-            shardingItems.removeAll(failoverService.getLocalHostTakeOffItems());
+            shardingItems.removeAll(failoverService.getLocalTakeOffItems());
         }
+        shardingItems.removeAll(executionService.getDisabledItems(shardingItems));
         return executionContextService.getJobShardingContext(shardingItems);
     }
     
     @Override
-    public boolean misfireIfNecessary(final Collection<Integer> shardingItems) {
-        return executionService.misfireIfNecessary(shardingItems);
+    public boolean misfireIfRunning(final Collection<Integer> shardingItems) {
+        return executionService.misfireIfHasRunningItems(shardingItems);
     }
     
     @Override
@@ -139,19 +140,14 @@ public class LiteJobFacade implements JobFacade {
     public boolean isEligibleForJobRunning() {
         LiteJobConfiguration liteJobConfig = configService.load(true);
         if (liteJobConfig.getTypeConfig() instanceof DataflowJobConfiguration) {
-            return !serverService.isJobPausedManually() && !shardingService.isNeedSharding() && ((DataflowJobConfiguration) liteJobConfig.getTypeConfig()).isStreamingProcess();    
+            return !shardingService.isNeedSharding() && ((DataflowJobConfiguration) liteJobConfig.getTypeConfig()).isStreamingProcess();    
         }
-        return !serverService.isJobPausedManually() && !shardingService.isNeedSharding();
+        return !shardingService.isNeedSharding();
     }
     
     @Override
     public boolean isNeedSharding() {
         return shardingService.isNeedSharding();
-    }
-    
-    @Override
-    public void cleanPreviousExecutionInfo() {
-        executionService.cleanPreviousExecutionInfo();
     }
     
     @Override
@@ -178,5 +174,8 @@ public class LiteJobFacade implements JobFacade {
         TaskContext taskContext = TaskContext.from(taskId);
         jobEventBus.post(new JobStatusTraceEvent(taskContext.getMetaInfo().getJobName(), taskContext.getId(),
                 taskContext.getSlaveId(), Source.LITE_EXECUTOR, taskContext.getType(), taskContext.getMetaInfo().getShardingItems().toString(), state, message));
+        if (!Strings.isNullOrEmpty(message)) {
+            log.trace(message);
+        }
     }
 }

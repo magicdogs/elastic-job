@@ -20,9 +20,12 @@ package com.dangdang.ddframe.job.executor.handler;
 import com.dangdang.ddframe.job.executor.handler.impl.DefaultExecutorServiceHandler;
 import com.dangdang.ddframe.job.executor.handler.impl.DefaultJobExceptionHandler;
 import com.dangdang.ddframe.job.util.json.GsonFactory;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -31,10 +34,11 @@ import java.util.Map;
  *
  * @author zhangliang
  */
-@RequiredArgsConstructor
+@AllArgsConstructor
+@NoArgsConstructor
 public final class JobProperties {
     
-    private final Map<JobPropertiesEnum, String> map = new LinkedHashMap<>(JobPropertiesEnum.values().length, 1);
+    private EnumMap<JobPropertiesEnum, String> map = new EnumMap<>(JobPropertiesEnum.class);
     
     /**
      * 设置作业属性.

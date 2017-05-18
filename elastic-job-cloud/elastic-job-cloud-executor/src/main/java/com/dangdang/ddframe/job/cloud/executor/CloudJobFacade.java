@@ -38,7 +38,7 @@ import java.util.Collection;
  * @author zhangliang
  */
 @RequiredArgsConstructor
-public class CloudJobFacade implements JobFacade {
+public final class CloudJobFacade implements JobFacade {
     
     private final ShardingContexts shardingContexts;
     
@@ -72,7 +72,7 @@ public class CloudJobFacade implements JobFacade {
     }
     
     @Override
-    public boolean misfireIfNecessary(final Collection<Integer> shardingItems) {
+    public boolean misfireIfRunning(final Collection<Integer> shardingItems) {
         return false;
     }
     
@@ -96,10 +96,6 @@ public class CloudJobFacade implements JobFacade {
     }
     
     @Override
-    public void cleanPreviousExecutionInfo() {
-    }
-    
-    @Override
     public void beforeJobExecuted(final ShardingContexts shardingContexts) {
     }
     
@@ -115,7 +111,7 @@ public class CloudJobFacade implements JobFacade {
     @Override
     public void postJobStatusTraceEvent(final String taskId, final State state, final String message) {
         TaskContext taskContext = TaskContext.from(taskId);
-        jobEventBus.post(new JobStatusTraceEvent(taskContext.getId(), taskContext.getMetaInfo().getJobName(),
-                taskContext.getSlaveId(), Source.CLOUD_EXECUTOR, taskContext.getType(), String.valueOf(taskContext.getMetaInfo().getShardingItems()), state, message));
+        jobEventBus.post(new JobStatusTraceEvent(taskContext.getMetaInfo().getJobName(), taskContext.getId(), taskContext.getSlaveId(), 
+                Source.CLOUD_EXECUTOR, taskContext.getType(), String.valueOf(taskContext.getMetaInfo().getShardingItems()), state, message));
     }
 }
